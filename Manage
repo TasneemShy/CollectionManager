@@ -1,6 +1,6 @@
 #! /bin/bash
 
-#-----------------------------------------SFUNCTIONS
+#-----------------------------------------FUNCTIONS
 
 #Checks the input for a valid record name
 CheckName(){
