@@ -1,6 +1,6 @@
 #! /bin/bash
 
-#-----------------------------------------FUNCTIONS
+#-----------------------------------------SFUNCTIONS
 
 #Checks the input for a valid record name
 CheckName(){
@@ -33,7 +33,7 @@ Check(){
     ;;
     "UpdateName")
         nameCheck=$(CheckName $2)
-        nameCheck=$(CheckName $3)
+        amountCheck=$(CheckName $3)
     ;;
     esac
 
@@ -47,8 +47,9 @@ Check(){
 #Prints records as requested
 Results(){
     local part=$1  
-    egrep $part $FILENAME  > "${FILENAME}_tmp"
+    awk -F, '{print $1}' $FILENAME | egrep $part > "${FILENAME}_tmp"
     if [ -s "${FILENAME}_tmp" ]; then
+    	egrep $part $FILENAME > "${FILENAME}_tmp"
         echo -e "\n------------RESULTS------------"  
         if [ -n "$2" ];then 
             sort ${FILENAME}_tmp
@@ -80,27 +81,37 @@ Insert(){
     Check "Insert" $name $amount
     if [ $? == 1 ]; then return 1; fi
     egrep $name $FILENAME > "${FILENAME}_tmp"
-    results=$(cat "${FILENAME}_tmp" | wc -l)
+    local results=$(cat "${FILENAME}_tmp" | wc -l)
     if [[ $results -gt 1 ]];then 
+        Recname=$(awk -F, -v recName=$name '{if ($1==recName){print $1}}' "${FILENAME}_tmp")
+        if [ -z $Recname ]; then
+            echo Insert a new one >> "${FILENAME}_tmp"
+        fi             
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to insert to: " recNum
-        if [[ $recNum =~ ^[1-9]+[0-9]*$ ]]; then 
+        if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
             name=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $1}')
-            old=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $2}')
-            oldRec="$name,$old"
-            newRec="$name,$(($old+$amount))"
+            oldamount=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $2}')
+            oldRec="$name,$oldamount"
+            newRec="$name,$(($oldamount+$amount))"
             sed -i "s/\b$oldRec\b/$newRec/" "$FILENAME"
+        elif [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -eq $(($results+1)) ]]; then
+            echo "$name,$amount" >> $FILENAME   
         else
             Log "Insert" "Failure"
             echo -e "\n----> Invalid input" 
             return 1
         fi
     elif [ $results -eq 1 ]; then
-        name=$(awk -F, '{print $1}' "${FILENAME}_tmp")
-        old=$(awk -F, '{print $2}' "${FILENAME}_tmp")
-        oldRec="$name,$old"
-        newRec="$name,$(($old+$amount))"
-        sed -i "s/\b$oldRec\b/$newRec/" "$FILENAME"
+        Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
+        if [ $name != $Recname ]; then
+        	echo "$name,$amount" >> $FILENAME
+        else
+        	oldamount=$(awk -F, '{print $2}' "${FILENAME}_tmp")
+        	oldRec="$name,$oldamount"
+        	newRec="$name,$(($oldamount+$amount))"
+        	sed -i "s/\b$oldRec\b/$newRec/" "$FILENAME"
+        fi
     elif [ $results -eq 0 ]; then
         echo "$name,$amount" >> $FILENAME
     fi
@@ -115,11 +126,11 @@ Delete(){
     Check "Delete" $name $amount
     if [ $? == 1 ]; then return 1; fi
     egrep $name $FILENAME > "${FILENAME}_tmp"
-    results=$(cat "${FILENAME}_tmp" | wc -l)
+     local results=$(cat "${FILENAME}_tmp" | wc -l)
     if [[ $results -gt 1 ]];then 
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to insert to: " recNum
-        if [[ $recNum =~ ^[1-9]+[0-9]*$ ]]; then 
+        if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
             name=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $1}')
             old=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $2}')
             oldRec="$name,$old"
@@ -130,9 +141,16 @@ Delete(){
             return 1
         fi
     elif [ $results -eq 1 ]; then
-        name=$(awk -F, '{print $1}' "${FILENAME}_tmp")
+        Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
+        if [ $name != $Recname ]; then
+        	echo -e "\n----> There is no Record to Delete"
+        	Log "Delete" "Failure"
+        	return 1
+    else
         old=$(awk -F, '{print $2}' "${FILENAME}_tmp")
         oldRec="$name,$old"
+        newAmount=$(($old-$amount))
+    fi
     elif [ $results -eq 0 ]; then
         echo -e "\n----> There is no Record to Delete"
         Log "Delete" "Failure"
@@ -171,17 +189,24 @@ UpdateName(){
     Check "UpdateName" $old $new
     if [ $? == 1 ]; then return 1; fi
     egrep $old $FILENAME > "${FILENAME}_tmp"
-    results=$(cat "${FILENAME}_tmp" | wc -l)
+    local results=$(cat "${FILENAME}_tmp" | wc -l)
 
     if [[ $results -gt 1 && $new != "" ]];then 
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to change: " recNum
-        if [[ $recNum =~ ^[1-9]+[0-9]*$ ]]; then 
+        if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
             old=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp" | awk -F, '{print $1}')
         else
             flag=1
         fi
-    elif [ $results -eq 0 ]; then
+    elif [ $results -eq 1 ]; then
+        Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
+        if [ $old != $Recname ]; then
+        	echo -e "\n----> There is no Record to Update"
+        	Log "UpdateName" "Failure"
+        	return 1
+        fi
+    else
         flag=1
     fi
 
@@ -202,19 +227,26 @@ UpdateAmount(){
     Check "UpdateAmount" $recName $newAmount
     if [ $? == 1 ]; then return 1; fi
     egrep $recName $FILENAME > "${FILENAME}_tmp"
-    results=$(cat "${FILENAME}_tmp" | wc -l)
+    local results=$(cat "${FILENAME}_tmp" | wc -l)
     old=$(awk -F, -v recName=$recName '{if ($1==recName){print $0}}' "${FILENAME}_tmp")
 
     if [[ $results -gt 1 && $newAmount != "" && $newAmount -gt 0 ]];then 
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to change: " recNum
-        if [[ $recNum =~ ^[1-9]+[0-9]*$ ]]; then 
+        if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
             old=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp")
             recName=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $1}')
         else
             flag=1
         fi
-    elif [ $results -eq 0 ]; then
+    elif [ $results -eq 1 ]; then
+        Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
+        if [ $recName != $Recname ]; then
+        	echo -e "\n----> There is no Record to Update"
+        	Log "UpdateAmount" "Failure"
+        	return 1
+        fi
+    else
         flag=1
     fi
 
@@ -255,6 +287,8 @@ PrintSort(){
 }
 
 #-----------------------------------------STARTING POINT
+
+main(){
 #Checks the record's file
 if [ -z $1 ]; then 
     echo "No File Name"
@@ -292,3 +326,6 @@ while true; do
         *) echo "Invalid input, Try Again" ;;
     esac
 done
+}
+
+main $1
