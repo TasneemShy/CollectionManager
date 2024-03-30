@@ -26,6 +26,7 @@ CheckAmount(){
 Check(){
     local nameCheck
     local amountCheck
+
     case $1 in 
     "Insert"|"Delete"|"UpdateAmount")
         nameCheck=$(CheckName $2)
@@ -48,6 +49,7 @@ Check(){
 Results(){
     local part=$1  
     awk -F, '{print $1}' $FILENAME | egrep $part > "${FILENAME}_tmp"
+
     if [ -s "${FILENAME}_tmp" ]; then
     	egrep $part $FILENAME > "${FILENAME}_tmp"
         echo -e "\n------------RESULTS------------"  
@@ -66,6 +68,7 @@ Results(){
 Log(){
     local action=$1; local state=$2
     local current_datetime=$(date +"%d-%m-%Y %H:%M:%S.%3N")
+
     if [[ $action != "PrintAll" && $action != "PrintSort" ]]; then
         echo $current_datetime $action $state >> "${FILENAME}_log"
     elif [ $state == "Success" ]; then
@@ -78,23 +81,27 @@ Log(){
 #Inserts a new Record or increases the amount if the record exist
 Insert(){
     local name=$1; local amount=$2
-    Check "Insert" $name $amount
+    Check "Insert" $name $amount  
     if [ $? == 1 ]; then return 1; fi
+
     egrep $name $FILENAME > "${FILENAME}_tmp"
     local results=$(cat "${FILENAME}_tmp" | wc -l)
+
     if [[ $results -gt 1 ]];then 
         Recname=$(awk -F, -v recName=$name '{if ($1==recName){print $1}}' "${FILENAME}_tmp")
-        if [ -z $Recname ]; then
-            echo Insert a new one >> "${FILENAME}_tmp"
-        fi             
+        if [ -z $Recname ]; then echo Insert a new one >> "${FILENAME}_tmp" ; fi   
+
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to insert to: " recNum
+
         if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
-            name=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $1}')
-            oldamount=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $2}')
+            chosen=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp")
+            name=$(echo $chosen | awk -F, '{print $1}')
+            oldamount=$(echo $chosen | awk -F, '{print $2}')
             oldRec="$name,$oldamount"
             newRec="$name,$(($oldamount+$amount))"
             sed -i "s/\b$oldRec\b/$newRec/" "$FILENAME"
+
         elif [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -eq $(($results+1)) ]]; then
             echo "$name,$amount" >> $FILENAME   
         else
@@ -102,8 +109,10 @@ Insert(){
             echo -e "\n----> Invalid input" 
             return 1
         fi
+
     elif [ $results -eq 1 ]; then
         Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
+
         if [ $name != $Recname ]; then
         	echo "$name,$amount" >> $FILENAME
         else
@@ -112,9 +121,10 @@ Insert(){
         	newRec="$name,$(($oldamount+$amount))"
         	sed -i "s/\b$oldRec\b/$newRec/" "$FILENAME"
         fi
-    elif [ $results -eq 0 ]; then
+    else
         echo "$name,$amount" >> $FILENAME
     fi
+
     Log "Insert" "Success"
     echo -e "\n----> The Record was Inserted Successfully" 
     return 0   
@@ -122,17 +132,21 @@ Insert(){
 
 #Deletes a number of copies or the whole record if the amount was less then 0
 Delete(){
-  local name=$1; local amount=$2
+    local name=$1; local amount=$2
     Check "Delete" $name $amount
     if [ $? == 1 ]; then return 1; fi
+
     egrep $name $FILENAME > "${FILENAME}_tmp"
-     local results=$(cat "${FILENAME}_tmp" | wc -l)
+    local results=$(cat "${FILENAME}_tmp" | wc -l)
+
     if [[ $results -gt 1 ]];then 
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to insert to: " recNum
+
         if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
-            name=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $1}')
-            old=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $2}')
+            chosen=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp")
+            name=$(echo $chosen | awk -F, '{print $1}')
+            old=$(echo $chosen | awk -F, '{print $2}')
             oldRec="$name,$old"
             newAmount=$(($old-$amount))
         else
@@ -140,6 +154,7 @@ Delete(){
             echo -e "\n----> Invalid input" 
             return 1
         fi
+
     elif [ $results -eq 1 ]; then
         Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
         if [ $name != $Recname ]; then
@@ -173,6 +188,7 @@ Delete(){
 Search(){
     local part=$1
     Results $part "sort" 
+
     if [ $? == 0 ]; then
         Log "Search" "Success"
         return 0  
@@ -188,17 +204,20 @@ UpdateName(){
     local flag=0; local old=$1; local new=$2
     Check "UpdateName" $old $new
     if [ $? == 1 ]; then return 1; fi
+
     egrep $old $FILENAME > "${FILENAME}_tmp"
     local results=$(cat "${FILENAME}_tmp" | wc -l)
 
     if [[ $results -gt 1 && $new != "" ]];then 
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to change: " recNum
+
         if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
             old=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp" | awk -F, '{print $1}')
         else
             flag=1
         fi
+
     elif [ $results -eq 1 ]; then
         Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
         if [ $old != $Recname ]; then
@@ -215,6 +234,7 @@ UpdateName(){
         echo -e "\n----> There is no Record with that name OR No New Name"
         return 1
     fi
+
     sed -i "s/\b$old\b/$new/I" "$FILENAME"
     Log "UpdateName" "Success"
     echo -e "\n----> The Record's Name was Updated Successfully"
@@ -226,19 +246,22 @@ UpdateAmount(){
     local flag=0; local recName=$1; local newAmount=$2
     Check "UpdateAmount" $recName $newAmount
     if [ $? == 1 ]; then return 1; fi
+
     egrep $recName $FILENAME > "${FILENAME}_tmp"
     local results=$(cat "${FILENAME}_tmp" | wc -l)
-    old=$(awk -F, -v recName=$recName '{if ($1==recName){print $0}}' "${FILENAME}_tmp")
+    local old=$(awk -F, -v recName=$recName '{if ($1==recName){print $0}}' "${FILENAME}_tmp")
 
     if [[ $results -gt 1 && $newAmount != "" && $newAmount -gt 0 ]];then 
         cat --number "${FILENAME}_tmp" | tee "${FILENAME}_tmp"
         read -p "Choose the Record you want to change: " recNum
+
         if [[ $recNum =~ ^[1-9]+[0-9]*$ && $recNum -le $results ]]; then 
             old=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp")
-            recName=$(awk -v recNum=$recNum '{if ($1==recNum){print $2}}' "${FILENAME}_tmp"| awk -F, '{print $1}')
+            recName=$(echo $old | awk -F, '{print $1}')
         else
             flag=1
         fi
+
     elif [ $results -eq 1 ]; then
         Recname=$(awk -F, '{print $1}' "${FILENAME}_tmp")
         if [ $recName != $Recname ]; then
@@ -255,6 +278,7 @@ UpdateAmount(){
         echo -e "\n----> There is no Record with that name OR No Amount value (greater then 0)"
         return 1
     fi
+
     new="$recName,$newAmount"
     sed -i "s/\b$old/$new/" "$FILENAME"
     Log "UpdateAmount" "Success"
@@ -266,6 +290,7 @@ UpdateAmount(){
 PrintAll(){
     local total=$(awk -F, 'BEGIN{sum=0;}{sum+=$2;}END{print sum;}' $FILENAME)
     Results "?"
+
     if [ $? == 0 ]; then   
         echo -e "\n----> You have a total copies of $total Records"
         Log "PrintAll" "Success"
@@ -278,6 +303,7 @@ PrintAll(){
 #Sorts and Prints all records
 PrintSort(){
     Results "?" "sort"
+
     if [ $? == 0 ]; then
         Log "PrintSort" "Success"
     else
@@ -306,23 +332,31 @@ while true; do
     echo "_______________________________"   
     echo -e "\n1) Insert\n2) Delete\n3) Search\n4) Update Name\n5) Update Amount\n6) Print All\n7) Print Sort\n8) Exit\n"
     read -p ">> choose one of the above: " action
-    echo -e "_______________________________\n"   
+    echo -e "_______________________________\n" 
+      
     case $action in
-        1|Insert|insert) read -p "> Enter the (RecordName Amount) you want to insert: " name amount
-                         Insert $name $amount ;;
-        2|Delete|delete) read -p "> Enter the (RecordName Amount) you want to delete: " name amount
-                         Delete $name $amount ;;                 
-        3|Search|search) read -p "> Enter the RecordName you want to search: " recName 
-                         Search $recName ;;
-        4|"Update name"|"update name") read -p "> Enter the (OldName NewName) you want to change: " old new 
-                         UpdateName $old $new ;;
-        5|"Update amount"|"update amount") read -p "> Enter the (RecordName NewAmount) you want to change: " recName newAmount 
-                         UpdateAmount $recName $newAmount ;;                                 
+        1|Insert|insert) 
+            read -p "> Enter the (RecordName Amount) you want to insert: " name amount 
+            Insert $name $amount ;;
+        2|Delete|delete) 
+            read -p "> Enter the (RecordName Amount) you want to delete: " name amount
+            Delete $name $amount ;;                 
+        3|Search|search) 
+            read -p "> Enter the RecordName you want to search: " recName 
+            Search $recName ;;
+        4|"Update name"|"update name") 
+            read -p "> Enter the (OldName NewName) you want to change: " old new 
+            UpdateName $old $new ;;
+        5|"Update amount"|"update amount") 
+            read -p "> Enter the (RecordName NewAmount) you want to change: " recName newAmount 
+            UpdateAmount $recName $newAmount ;;                                 
         6|"Print all"|"print all")
-                         PrintAll ;;
+            PrintAll ;;
         7|"Print sort"|"print sort") 
-                         PrintSort ;;
-        8|Exit|exit) rm ${FILENAME}_tmp ; exit ;;
+            PrintSort ;;
+        8|Exit|exit) 
+            rm ${FILENAME}_tmp
+            exit ;;
         *) echo "Invalid input, Try Again" ;;
     esac
 done
